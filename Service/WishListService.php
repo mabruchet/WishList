@@ -13,6 +13,7 @@
 namespace WishList\Service;
 
 use Cocur\Slugify\Slugify;
+use http\Exception;
 use Propel\Runtime\ActiveQuery\Criteria;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -262,11 +263,10 @@ class WishListService
             ->setCustomerId($customerId)
             ->setSessionId($sessionId);
 
-        $code = $this->getWishList($newWishList);
+        $code = $this->createWishlistSlug($newWishList);
 
         $newWishList
             ->setCode($code)
-            ->save()
         ;
 
         $newWishList
@@ -331,11 +331,10 @@ class WishListService
             ->setCustomerId($customerId)
             ->setSessionId($sessionId);
 
-        $code = $this->getWishList($newWishList);
+        $code = $this->createWishlistSlug($newWishList);
 
         $newWishList
-            ->setCode($code)
-            ->save();
+            ->setCode($code);
 
         $newWishList
             ->setRewrittenUrl($currentLang->getLocale(), $code)
@@ -416,5 +415,41 @@ class WishListService
         }
 
         return $wishlistHash;
+    }
+
+    public function isWishListTypeAlreadyExists(WishList $wishList): bool
+    {
+        [$customerId, $sessionId] = $this->getCurrentUserOrSession();
+
+        if (($customerId !== null && $wishList->getCustomerId() !== $customerId)
+            || ($sessionId !== null && $wishList->getSessionId() !== $sessionId)) {
+            throw new \Exception('WishList not found for this customer or session');
+        }
+
+        $wishListData = array_map(static function($item) {
+            return [
+                'ProductSaleElementsId' => $item['ProductSaleElementsId'],
+                'Quantity' => $item['Quantity']
+            ];
+        }, $wishList->getWishListProducts()->toArray());
+
+        $currentWishListsType = WishListQuery::create()
+            ->filterByCustomerId($wishList->getCustomerId())
+            ->filterByIsType(1)
+            ->find();
+        foreach ($currentWishListsType as $currentWishListType) {
+            $currentWishListTypeData = array_map(static function($item) {
+                return [
+                    'ProductSaleElementsId' => $item['ProductSaleElementsId'],
+                    'Quantity' => $item['Quantity']
+                ];
+            }, $currentWishListType->getWishListProducts()->toArray());
+
+            if ($wishListData === $currentWishListTypeData) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
